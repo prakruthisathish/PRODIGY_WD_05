@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weather Now</title>
+  <style>
+    :root {
+      --bg-top: #8ec5fc;
+      --bg-bottom: #e0c3fc;
+      --card-bg: rgba(255, 255, 255, 0.9);
+      --text: #1f2937;
+      --muted: #4b5563;
+      --accent: #0f766e;
+      --accent-hover: #115e59;
+      --danger: #b91c1c;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background: linear-gradient(140deg, #8ec5fc, #e0c3fc);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+      transition: background 700ms ease;
+    }
+
+    body[data-scene="clear"] {
+      background: linear-gradient(140deg, #79c7ff, #ffdd9a);
+    }
+
+    body[data-scene="cloudy"] {
+      background: linear-gradient(140deg, #9bb1c9, #dbe4ef);
+    }
+
+    body[data-scene="rain"] {
+      background: linear-gradient(140deg, #5a7b9a, #7c90a8);
+    }
+
+    body[data-scene="snow"] {
+      background: linear-gradient(140deg, #d8ebff, #f6fbff);
+    }
+
+    body[data-scene="fog"] {
+      background: linear-gradient(140deg, #b4bdc8, #d7dde4);
+    }
+
+    body[data-scene="storm"] {
+      background: linear-gradient(140deg, #2e3f55, #1a2537);
+    }
+
+    body[data-scene="night"] {
+      background: linear-gradient(140deg, #17223b, #253b69);
+    }
+
+    .bg-anim {
+      position: fixed;
+      inset: -10vmax;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.35), transparent 40%),
+        radial-gradient(circle at 80% 30%, rgba(255, 255, 255, 0.25), transparent 45%),
+        radial-gradient(circle at 50% 80%, rgba(255, 255, 255, 0.2), transparent 40%);
+      filter: blur(10px);
+      animation: floatField 14s ease-in-out infinite alternate;
+      opacity: 0.8;
+    }
+
+    .bg-anim::before,
+    .bg-anim::after {
+      content: "";
+      position: absolute;
+      width: 40vmax;
+      height: 40vmax;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.18);
+      animation: drift 18s linear infinite;
+    }
+
+    .bg-anim::before {
+      top: 10%;
+      left: 10%;
+    }
+
+    .bg-anim::after {
+      right: 8%;
+      bottom: 12%;
+      animation-duration: 22s;
+      animation-direction: reverse;
+    }
+
+    .precip {
+      position: absolute;
+      inset: -15%;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    body[data-scene="rain"] .precip {
+      opacity: 0.45;
+      background-image: repeating-linear-gradient(
+        115deg,
+        rgba(255, 255, 255, 0.65) 0 2px,
+        transparent 2px 18px
+      );
+      background-size: 220px 220px;
+      animation: rainFall 0.85s linear infinite;
+    }
+
+    body[data-scene="snow"] .precip {
+      opacity: 0.7;
+      background-image:
+        radial-gradient(circle, rgba(255, 255, 255, 0.95) 0 2px, transparent 3px),
+        radial-gradient(circle, rgba(255, 255, 255, 0.7) 0 1.5px, transparent 2.5px);
+      background-size: 42px 42px, 56px 56px;
+      background-position: 0 0, 18px 10px;
+      animation: snowFall 6s linear infinite;
+    }
+
+    body[data-scene="fog"] .bg-anim {
+      opacity: 0.95;
+      filter: blur(16px);
+    }
+
+    body[data-scene="storm"] .bg-anim {
+      opacity: 0.45;
+      animation: floatField 8s ease-in-out infinite alternate, stormFlash 5s linear infinite;
+    }
+
+    body[data-scene="night"] .bg-anim {
+      opacity: 0.55;
+    }
+
+    .app {
+      width: min(760px, 100%);
+      background: var(--card-bg);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 20px;
+      backdrop-filter: blur(4px);
+    }
+
+    h1 {
+      margin: 0 0 14px;
+      font-size: clamp(1.5rem, 3vw, 2rem);
+    }
+
+    .controls {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr;
+      margin-bottom: 16px;
+    }
+
+    .search-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 220px;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 1rem;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+      transition: 0.2s ease;
+    }
+
+    button:hover {
+      background: var(--accent-hover);
+    }
+
+    .status {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .status.error {
+      color: var(--danger);
+    }
+
+    .weather-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 16px;
+      display: none;
+    }
+
+    .weather-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .place {
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+
+    .condition {
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    .temp {
+      font-size: clamp(2rem, 6vw, 3.2rem);
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .details {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      margin-top: 12px;
+    }
+
+    .detail {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 10px;
+    }
+
+    .label {
+      display: block;
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .value {
+      font-weight: 700;
+    }
+
+    .forecast-section {
+      margin-top: 16px;
+    }
+
+    .forecast-title {
+      margin: 0 0 8px;
+      font-size: 1rem;
+    }
+
+    .forecast-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    }
+
+    .forecast-item {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 0.9rem;
+    }
+
+    .forecast-time {
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-bottom: 4px;
+    }
+
+    body[data-scene="storm"] .app,
+    body[data-scene="night"] .app {
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    @keyframes floatField {
+      0% {
+        transform: translate3d(-2%, -1%, 0) scale(1);
+      }
+      100% {
+        transform: translate3d(2%, 1%, 0) scale(1.08);
+      }
+    }
+
+    @keyframes drift {
+      0% {
+        transform: translate3d(0, 0, 0);
+      }
+      25% {
+        transform: translate3d(8%, -6%, 0);
+      }
+      50% {
+        transform: translate3d(-4%, 8%, 0);
+      }
+      75% {
+        transform: translate3d(-8%, -4%, 0);
+      }
+      100% {
+        transform: translate3d(0, 0, 0);
+      }
+    }
+
+    @keyframes rainFall {
+      0% {
+        transform: translate3d(0, -30px, 0);
+      }
+      100% {
+        transform: translate3d(-40px, 40px, 0);
+      }
+    }
+
+    @keyframes snowFall {
+      0% {
+        transform: translate3d(0, -10px, 0);
+      }
+      100% {
+        transform: translate3d(-20px, 50px, 0);
+      }
+    }
+
+    @keyframes stormFlash {
+      0%, 44%, 100% {
+        filter: blur(10px) brightness(1);
+      }
+      45% {
+        filter: blur(10px) brightness(1.8);
+      }
+      46% {
+        filter: blur(10px) brightness(1);
+      }
+      47% {
+        filter: blur(10px) brightness(1.5);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-anim" aria-hidden="true">
+    <div class="precip"></div>
+  </div>
+  <main class="app">
+    <h1>Weather Now</h1>
+
+    <section class="controls">
+      <div class="search-row">
+        <input id="locationInput" type="text" placeholder="Enter city (e.g., Bengaluru, London)" />
+        <button id="searchBtn">Search</button>
+        <button id="geoBtn">Use My Location</button>
+      </div>
+      <div id="status" class="status">Choose a location to load weather.</div>
+    </section>
+
+    <section id="weatherCard" class="weather-card">
+      <div class="weather-top">
+        <div>
+          <div id="place" class="place">-</div>
+          <div id="condition" class="condition">-</div>
+        </div>
+        <div id="temp" class="temp">--&deg;C</div>
+      </div>
+
+      <div class="details">
+        <div class="detail"><span class="label">Feels Like</span><span id="feelsLike" class="value">-</span></div>
+        <div class="detail"><span class="label">Humidity</span><span id="humidity" class="value">-</span></div>
+        <div class="detail"><span class="label">Wind Speed</span><span id="wind" class="value">-</span></div>
+        <div class="detail"><span class="label">Pressure</span><span id="pressure" class="value">-</span></div>
+        <div class="detail"><span class="label">Cloud Cover</span><span id="cloud" class="value">-</span></div>
+        <div class="detail"><span class="label">Day / Night</span><span id="dayNight" class="value">-</span></div>
+      </div>
+
+      <div class="forecast-section">
+        <h3 class="forecast-title">Hourly Forecast</h3>
+        <div id="hourlyForecast" class="forecast-grid"></div>
+      </div>
+
+      <div class="forecast-section">
+        <h3 class="forecast-title">5-Day Forecast</h3>
+        <div id="dailyForecast" class="forecast-grid"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const weatherCard = document.getElementById("weatherCard");
+    const inputEl = document.getElementById("locationInput");
+
+    const placeEl = document.getElementById("place");
+    const conditionEl = document.getElementById("condition");
+    const tempEl = document.getElementById("temp");
+    const feelsLikeEl = document.getElementById("feelsLike");
+    const humidityEl = document.getElementById("humidity");
+    const windEl = document.getElementById("wind");
+    const pressureEl = document.getElementById("pressure");
+    const cloudEl = document.getElementById("cloud");
+    const dayNightEl = document.getElementById("dayNight");
+    const hourlyForecastEl = document.getElementById("hourlyForecast");
+    const dailyForecastEl = document.getElementById("dailyForecast");
+
+    function setStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.classList.toggle("error", isError);
+    }
+
+    function weatherCodeToText(code) {
+      const map = {
+        0: "Clear sky",
+        1: "Mainly clear",
+        2: "Partly cloudy",
+        3: "Overcast",
+        45: "Fog",
+        48: "Depositing rime fog",
+        51: "Light drizzle",
+        53: "Moderate drizzle",
+        55: "Dense drizzle",
+        56: "Light freezing drizzle",
+        57: "Dense freezing drizzle",
+        61: "Slight rain",
+        63: "Moderate rain",
+        65: "Heavy rain",
+        66: "Light freezing rain",
+        67: "Heavy freezing rain",
+        71: "Slight snow",
+        73: "Moderate snow",
+        75: "Heavy snow",
+        77: "Snow grains",
+        80: "Slight rain showers",
+        81: "Moderate rain showers",
+        82: "Violent rain showers",
+        85: "Slight snow showers",
+        86: "Heavy snow showers",
+        95: "Thunderstorm",
+        96: "Thunderstorm with slight hail",
+        99: "Thunderstorm with heavy hail"
+      };
+      return map[code] || "Unknown conditions";
+    }
+
+    function getWeatherScene(code, isDay) {
+      if ([95, 96, 99].includes(code)) return "storm";
+      if ([45, 48].includes(code)) return "fog";
+      if ([71, 73, 75, 77, 85, 86].includes(code)) return "snow";
+      if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "rain";
+      if (!isDay && [0, 1, 2, 3].includes(code)) return "night";
+      if ([2, 3].includes(code)) return "cloudy";
+      return "clear";
+    }
+
+    function applyWeatherBackground(code, isDay) {
+      const scene = getWeatherScene(code, isDay);
+      document.body.dataset.scene = scene;
+    }
+
+    async function getCoordinatesByCity(city) {
+      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Unable to find that location.");
+      const data = await res.json();
+      if (!data.results || !data.results.length) throw new Error("Location not found.");
+      const loc = data.results[0];
+      const label = [loc.name, loc.admin1, loc.country].filter(Boolean).join(", ");
+      return { latitude: loc.latitude, longitude: loc.longitude, label };
+    }
+
+    async function getWeather(latitude, longitude) {
+      const url =
+        `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
+        `&current=temperature_2m,apparent_temperature,relative_humidity_2m,pressure_msl,cloud_cover,wind_speed_10m,is_day,weather_code` +
+        `&hourly=temperature_2m,weather_code` +
+        `&daily=weather_code,temperature_2m_max,temperature_2m_min` +
+        `&forecast_days=5` +
+        `&timezone=auto`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Weather service is unavailable.");
+      const data = await res.json();
+      if (!data.current) throw new Error("No weather data returned.");
+      return data;
+    }
+
+    function renderWeather(place, weatherData) {
+      const c = weatherData.current;
+      placeEl.textContent = place;
+      conditionEl.textContent = weatherCodeToText(c.weather_code);
+      tempEl.textContent = `${Math.round(c.temperature_2m)}\u00B0C`;
+      feelsLikeEl.textContent = `${Math.round(c.apparent_temperature)}\u00B0C`;
+      humidityEl.textContent = `${c.relative_humidity_2m}%`;
+      windEl.textContent = `${c.wind_speed_10m} km/h`;
+      pressureEl.textContent = `${c.pressure_msl} hPa`;
+      cloudEl.textContent = `${c.cloud_cover}%`;
+      dayNightEl.textContent = c.is_day ? "Day" : "Night";
+      applyWeatherBackground(c.weather_code, Boolean(c.is_day));
+      weatherCard.style.display = "block";
+
+      renderHourlyForecast(weatherData.hourly);
+      renderDailyForecast(weatherData.daily);
+    }
+
+    function renderHourlyForecast(hourly) {
+      hourlyForecastEl.innerHTML = "";
+      if (!hourly || !hourly.time || !hourly.time.length) return;
+
+      const now = Date.now();
+      const nextItems = [];
+      for (let i = 0; i < hourly.time.length; i++) {
+        const t = new Date(hourly.time[i]).getTime();
+        if (t >= now) {
+          nextItems.push({
+            time: hourly.time[i],
+            temp: hourly.temperature_2m[i],
+            code: hourly.weather_code[i]
+          });
+        }
+        if (nextItems.length === 8) break;
+      }
+
+      nextItems.forEach((item) => {
+        const time = new Date(item.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const div = document.createElement("div");
+        div.className = "forecast-item";
+        div.innerHTML =
+          `<div class="forecast-time">${time}</div>` +
+          `<div><strong>${Math.round(item.temp)}\u00B0C</strong></div>` +
+          `<div>${weatherCodeToText(item.code)}</div>`;
+        hourlyForecastEl.appendChild(div);
+      });
+    }
+
+    function renderDailyForecast(daily) {
+      dailyForecastEl.innerHTML = "";
+      if (!daily || !daily.time || !daily.time.length) return;
+
+      for (let i = 0; i < daily.time.length; i++) {
+        const dateLabel = new Date(daily.time[i]).toLocaleDateString([], {
+          weekday: "short",
+          month: "short",
+          day: "numeric"
+        });
+        const div = document.createElement("div");
+        div.className = "forecast-item";
+        div.innerHTML =
+          `<div class="forecast-time">${dateLabel}</div>` +
+          `<div><strong>${Math.round(daily.temperature_2m_max[i])}\u00B0C / ${Math.round(daily.temperature_2m_min[i])}\u00B0C</strong></div>` +
+          `<div>${weatherCodeToText(daily.weather_code[i])}</div>`;
+        dailyForecastEl.appendChild(div);
+      }
+    }
+
+    async function loadByCoordinates(lat, lon, label) {
+      try {
+        setStatus("Loading weather...");
+        const weatherData = await getWeather(lat, lon);
+        renderWeather(label, weatherData);
+        setStatus(`Updated just now for ${label}.`);
+      } catch (err) {
+        setStatus(err.message || "Failed to load weather.", true);
+      }
+    }
+
+    async function searchByInput() {
+      const city = inputEl.value.trim();
+      if (!city) {
+        setStatus("Please enter a city name.", true);
+        return;
+      }
+      try {
+        setStatus("Looking up location...");
+        const { latitude, longitude, label } = await getCoordinatesByCity(city);
+        await loadByCoordinates(latitude, longitude, label);
+      } catch (err) {
+        setStatus(err.message || "Could not fetch that location.", true);
+      }
+    }
+
+    function useMyLocation() {
+      if (!navigator.geolocation) {
+        setStatus("Geolocation is not supported in this browser.", true);
+        return;
+      }
+      setStatus("Getting your location...");
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          await loadByCoordinates(latitude, longitude, "Your Current Location");
+        },
+        (error) => {
+          let msg = "Unable to get your location.";
+          if (error.code === 1) msg = "Location permission was denied.";
+          if (error.code === 2) msg = "Location is currently unavailable.";
+          if (error.code === 3) msg = "Location request timed out.";
+          setStatus(msg, true);
+        },
+        { timeout: 10000 }
+      );
+    }
+
+    document.getElementById("searchBtn").addEventListener("click", searchByInput);
+    document.getElementById("geoBtn").addEventListener("click", useMyLocation);
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") searchByInput();
+    });
+  </script>
+</body>
+</html>
+
